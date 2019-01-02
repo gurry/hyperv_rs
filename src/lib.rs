@@ -1,7 +1,41 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+use powershell_rs::Ps;
+use failure::Fail;
+use serde_derive::Deserialize;
+use uuid::Uuid;
+use std::fmt;
+
+pub struct Hyperv;
+
+impl Hyperv {
+    pub fn get_vms() -> Result<Vec<Vm>, HypervError> {
+        let json = Ps::execute("get-vm|select-object -property Id,Name |convertto-json")
+            .map_err(|e| HypervError { msg: format!("Failed to get VMs. {}", e) })?
+            .stdout();
+
+        let vms: Vec<Vm> = serde_json::from_str(&json)
+            .map_err(|e| HypervError { msg: format!("Failed to get VMs. Failed to parse powershell output: {}", e) })?;
+
+        Ok(vms)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Vm {
+    #[serde(rename = "Id")]
+    pub id: Uuid,
+    #[serde(rename = "Name")]
+    pub name: String,
+}
+
+
+// TODO: We need to do proper design of error types. Just this one type is not enough
+#[derive(Debug, Fail)]
+pub struct HypervError  {
+    pub msg: String,
+}
+
+impl fmt::Display for HypervError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.msg)
     }
 }
