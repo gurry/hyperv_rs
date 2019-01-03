@@ -8,7 +8,7 @@ fn main () {
             if !vms.is_empty() {
                 println!("");
                 for vm in vms {
-                println!("Name: {}, Id: {}", vm.name, vm.id);
+                println!("Id: {}, Name: {}", vm.id, vm.name);
                 }
             }
         },
