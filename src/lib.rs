@@ -1,4 +1,4 @@
-use powershell_rs::{PsCommand, Stdio, PsProcess, ExitStatus};
+use powershell_rs::{PsCommand, Stdio, PsProcess, Output};
 use failure::Fail;
 use serde_derive::Deserialize;
 use uuid::Uuid;
@@ -26,10 +26,7 @@ impl Hyperv {
         }
 
         let path = path.to_str().ok_or_else(|| HypervError { msg: "Bad path".to_owned() })?;
-        let exit_status = Self::spawn_and_wait(&format!("import-vm -Path {}", path))?;
-        if !exit_status.success() {
-            return Err(HypervError { msg: format!("Powershell returned failure exit code: {}", exit_status.code().map(|c| c.to_string()).unwrap_or("<unknown>".to_owned())) });
-        }
+        Self::spawn_and_wait(&format!("import-vm -Path {}", path))?;
 
         Ok(())
     } 
@@ -41,10 +38,19 @@ impl Hyperv {
             .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))
     }
 
-    fn spawn_and_wait(command: &str) -> Result<ExitStatus> {
-        Self::spawn(command)?
-            .wait()
-            .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))
+    fn spawn_and_wait(command: &str) -> Result<Output> {
+        let output = Self::spawn(command)?
+            .wait_with_output()
+            .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))?;
+
+        if !output.status.success() {
+            let exit_code_str = output.status.code().map(|c| c.to_string()).unwrap_or("<none>".to_owned());
+            let stderr_count = output.stderr.len();
+            let stderr = to_string_truncated(&output.stderr, 1000);
+            return Err(HypervError { msg: format!("Powershell returned failure exit code: {}. Stderr: {}, s: {}", exit_code_str, if !stderr.is_empty() { stderr } else { "<empty>".to_owned() }, stderr_count) });
+        }
+
+        Ok(output)
     }
 }
 
@@ -75,4 +81,9 @@ impl fmt::Display for HypervError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.msg)
     }
+}
+
+fn to_string_truncated(bytes: &Vec<u8>, take: usize) -> String {
+    let len = std::cmp::min(bytes.len(), take);
+    String::from_utf8_lossy(&bytes[..len]).to_string()
 }
