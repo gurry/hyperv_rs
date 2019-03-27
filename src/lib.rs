@@ -26,7 +26,7 @@ impl Hyperv {
         }
 
         let path = path.to_str().ok_or_else(|| HypervError { msg: "Bad path".to_owned() })?;
-        Self::spawn_and_wait(&format!("import-vm -Path {}", path))?;
+        Self::spawn_and_wait(&format!("import-vm -Path \"{}\"", path))?;
 
         Ok(())
     } 
