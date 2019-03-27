@@ -45,9 +45,10 @@ impl Hyperv {
 
         if !output.status.success() {
             let exit_code_str = output.status.code().map(|c| c.to_string()).unwrap_or("<none>".to_owned());
-            let stderr_count = output.stderr.len();
+            let stdout = to_string_truncated(&output.stdout, 1000);
             let stderr = to_string_truncated(&output.stderr, 1000);
-            return Err(HypervError { msg: format!("Powershell returned failure exit code: {}. Stderr: {}, s: {}", exit_code_str, if !stderr.is_empty() { stderr } else { "<empty>".to_owned() }, stderr_count) });
+            fn handle_blank(s: String) -> String { if !s.is_empty() { s } else { "<empty>".to_owned() } }
+            return Err(HypervError { msg: format!("Powershell returned failure exit code: {}.\nStdout: {} \nStderr: {}", exit_code_str, handle_blank(stdout), handle_blank(stderr)) });
         }
 
         Ok(output)
