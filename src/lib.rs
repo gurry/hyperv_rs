@@ -6,8 +6,10 @@ use std::fmt;
 
 pub struct Hyperv;
 
+pub type Result<T> = std::result::Result<T, HypervError>;
+
 impl Hyperv {
-    pub fn get_vms() -> Result<Vec<Vm>, HypervError> {
+    pub fn get_vms() -> Result<Vec<Vm>> {
         let process = PsCommand::new("get-vm|select-object -property Id,Name |convertto-json")
             .stdout(Stdio::piped())
             .spawn()
