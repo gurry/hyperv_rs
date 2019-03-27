@@ -1,4 +1,4 @@
-use powershell_rs::Ps;
+use powershell_rs::{PsCommand, Stdio};
 use failure::Fail;
 use serde_derive::Deserialize;
 use uuid::Uuid;
@@ -8,11 +8,14 @@ pub struct Hyperv;
 
 impl Hyperv {
     pub fn get_vms() -> Result<Vec<Vm>, HypervError> {
-        let json = Ps::execute("get-vm|select-object -property Id,Name |convertto-json")
-            .map_err(|e| HypervError { msg: format!("Failed to get VMs. {}", e) })?
-            .stdout();
+        let process = PsCommand::new("get-vm|select-object -property Id,Name |convertto-json")
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| HypervError { msg: format!("Failed to get VMs. {}", e) })?;
+        
+        let stdout = process.stdout().ok_or(HypervError { msg: "Could not access stdout of powershell process".to_owned()})?;
 
-        let vms: Vec<Vm> = serde_json::from_str(&json)
+        let vms: Vec<Vm> = serde_json::from_reader(stdout)
             .map_err(|e| HypervError { msg: format!("Failed to get VMs. Failed to parse powershell output: {}", e) })?;
 
         Ok(vms)
