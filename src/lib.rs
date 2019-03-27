@@ -3,6 +3,7 @@ use failure::Fail;
 use serde_derive::Deserialize;
 use uuid::Uuid;
 use std::fmt;
+use std::path::Path;
 
 pub struct Hyperv;
 
@@ -18,6 +19,20 @@ impl Hyperv {
 
         Ok(vms)
     }
+
+    pub fn import_vm(path: &Path) -> Result<()> {
+        if !path.is_file() {
+            return Err(HypervError::new("Path does not point to a valid file"));
+        }
+
+        let path = path.to_str().ok_or_else(|| HypervError { msg: "Bad path".to_owned() })?;
+        let exit_status = Self::spawn_and_wait(&format!("import-vm -Path {}", path))?;
+        if !exit_status.success() {
+            return Err(HypervError { msg: format!("Powershell returned failure exit code: {}", exit_status.code().map(|c| c.to_string()).unwrap_or("<unknown>".to_owned())) });
+        }
+
+        Ok(())
+    } 
 
     fn spawn(command: &str) -> Result<PsProcess> {
         PsCommand::new(command)
