@@ -25,11 +25,13 @@ impl Hyperv {
 #[derive(Debug, Deserialize)]
 pub struct Vm {
     #[serde(rename = "Id")]
-    pub id: Uuid,
+    pub id: VmId,
     #[serde(rename = "Name")]
     pub name: String,
 }
 
+// TODO: should this be a newtype?
+pub type VmId = Uuid;
 
 // TODO: We need to do proper design of error types. Just this one type is not enough
 #[derive(Debug, Fail)]
