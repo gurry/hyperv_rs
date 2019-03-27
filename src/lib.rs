@@ -1,4 +1,4 @@
-use powershell_rs::{PsCommand, Stdio};
+use powershell_rs::{PsCommand, Stdio, PsProcess, ExitStatus};
 use failure::Fail;
 use serde_derive::Deserialize;
 use uuid::Uuid;
@@ -10,17 +10,26 @@ pub type Result<T> = std::result::Result<T, HypervError>;
 
 impl Hyperv {
     pub fn get_vms() -> Result<Vec<Vm>> {
-        let process = PsCommand::new("get-vm|select-object -property Id,Name |convertto-json")
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(|e| HypervError { msg: format!("Failed to get VMs. {}", e) })?;
-        
-        let stdout = process.stdout().ok_or(HypervError { msg: "Could not access stdout of powershell process".to_owned()})?;
+        let process = Self::spawn("get-vm|select-object -property Id,Name |convertto-json")?;
+        let stdout = process.stdout().ok_or(HypervError::new("Could not access stdout of powershell process"))?;
 
         let vms: Vec<Vm> = serde_json::from_reader(stdout)
-            .map_err(|e| HypervError { msg: format!("Failed to get VMs. Failed to parse powershell output: {}", e) })?;
+            .map_err(|e| HypervError::new(format!("Failed to parse powershell output: {}", e)))?;
 
         Ok(vms)
+    }
+
+    fn spawn(command: &str) -> Result<PsProcess> {
+        PsCommand::new(command)
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))
+    }
+
+    fn spawn_and_wait(command: &str) -> Result<ExitStatus> {
+        Self::spawn(command)?
+            .wait()
+            .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))
     }
 }
 
@@ -39,6 +48,12 @@ pub type VmId = Uuid;
 #[derive(Debug, Fail)]
 pub struct HypervError  {
     pub msg: String,
+}
+
+impl HypervError {
+    fn new<T: Into<String>>(msg: T) -> Self {
+        Self { msg: msg.into() }
+    }
 }
 
 impl fmt::Display for HypervError {
