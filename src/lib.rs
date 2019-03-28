@@ -20,7 +20,8 @@ impl Hyperv {
         Ok(vms)
     }
 
-    pub fn import_vm(path: &Path) -> Result<()> {
+    pub fn import_vm<P: AsRef<Path>>(path: P) -> Result<()> {
+        let path = path.as_ref();
         if !path.is_file() {
             return Err(HypervError::new("Path does not point to a valid file"));
         }
@@ -29,7 +30,7 @@ impl Hyperv {
         Self::spawn_and_wait(&format!("import-vm -Path \"{}\"", path))?;
 
         Ok(())
-    } 
+    }
 
     fn spawn(command: &str) -> Result<PsProcess> {
         PsCommand::new(command)
