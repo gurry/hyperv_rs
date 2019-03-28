@@ -12,7 +12,7 @@ pub type Result<T> = std::result::Result<T, HypervError>;
 impl Hyperv {
     pub fn get_vms() -> Result<Vec<Vm>> {
         let process = Self::spawn("get-vm|select-object -property Id,Name |convertto-json")?;
-        let stdout = process.stdout().ok_or(HypervError::new("Could not access stdout of powershell process"))?;
+        let stdout = process.stdout().ok_or_else(|| HypervError::new("Could not access stdout of powershell process"))?;
 
         let vms: Vec<Vm> = serde_json::from_reader(stdout)
             .map_err(|e| HypervError::new(format!("Failed to parse powershell output: {}", e)))?;
@@ -44,7 +44,7 @@ impl Hyperv {
             .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))?;
 
         if !output.status.success() {
-            let exit_code_str = output.status.code().map(|c| c.to_string()).unwrap_or("<none>".to_owned());
+            let exit_code_str = output.status.code().map(|c| c.to_string()).unwrap_or_else(|| "<none>".to_owned());
             let stdout = to_string_truncated(&output.stdout, 1000);
             let stderr = to_string_truncated(&output.stderr, 1000);
             fn handle_blank(s: String) -> String { if !s.is_empty() { s } else { "<empty>".to_owned() } }
@@ -84,7 +84,7 @@ impl fmt::Display for HypervError {
     }
 }
 
-fn to_string_truncated(bytes: &Vec<u8>, take: usize) -> String {
+fn to_string_truncated(bytes: &[u8], take: usize) -> String {
     let len = std::cmp::min(bytes.len(), take);
     String::from_utf8_lossy(&bytes[..len]).to_string()
 }
