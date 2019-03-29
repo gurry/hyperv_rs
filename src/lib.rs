@@ -1,4 +1,4 @@
-use powershell_rs::{PsCommand, Stdio, PsProcess, Output};
+use powershell_rs::{PsCommand, Stdio, PsProcess, Stdout};
 use failure::Fail;
 use serde_derive::Deserialize;
 use uuid::Uuid;
@@ -31,11 +31,12 @@ impl Hyperv {
         let path = Self::validate_file_path(path.as_ref())?;
         let command = format!(
             "$report = compare-vm -Path \"{}\";
-            $report.Incompatibilities | Format-Table -Property MessageId, Message -HideTableHeaders"
-            , path);
-        let process = Self::spawn(&command)?;
+            if ($?) {{ $report.Incompatibilities | Format-Table -Property MessageId, Message -HideTableHeaders }}",
+        path);
+             
+        let output = Self::spawn_and_wait(&command)?;
 
-        Self::map_lines(process, |line: &str| {
+        Self::map_lines(output, |line: &str| {
             let line = line.trim();
             if line.is_empty() {
                 return Ok(None)
@@ -57,9 +58,7 @@ impl Hyperv {
         }
     }
 
-    fn map_lines<T, F: Fn(&str) -> Result<Option<T>>>(process: PsProcess, f: F) -> Result<Vec<T>> {
-        let stdout = process.stdout().ok_or_else(|| HypervError::new("Could not access stdout of powershell process"))?;
-        
+    fn map_lines<T, F: Fn(&str) -> Result<Option<T>>>(stdout: Stdout, f: F) -> Result<Vec<T>> {
         let mut vec = Vec::new();
         for line in BufReader::new(stdout).lines() {
             match line {
@@ -82,20 +81,24 @@ impl Hyperv {
             .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))
     }
 
-    fn spawn_and_wait(command: &str) -> Result<Output> {
-        let output = Self::spawn(command)?
-            .wait_with_output()
-            .map_err(|e| HypervError::new(format!("Failed to spawn PowerShell process: {}", e)))?;
+    fn spawn_and_wait(command: &str) -> Result<Stdout> {
+        let mut process = Self::spawn(command)?;
+        let status = process.wait()
+            .map_err(|e| HypervError::new(format!("Failed while waiting for PowerShell process: {}", e)))?;
 
-        if !output.status.success() {
-            let exit_code_str = output.status.code().map(|c| c.to_string()).unwrap_or_else(|| "<none>".to_owned());
+        if !status.success() {
+            let exit_code_str = status.code().map(|c| c.to_string()).unwrap_or_else(|| "<none>".to_owned());
+            let output = process.wait_with_output() //.map(|c| c.to_string()).unwrap_or_else(|| "<none>".to_owned());
+                .map_err(|e| HypervError::new(format!("Failed while waiting for PowerShell process: {}", e)))?;
             let stdout = to_string_truncated(&output.stdout, 1000);
             let stderr = to_string_truncated(&output.stderr, 1000);
             fn handle_blank(s: String) -> String { if !s.is_empty() { s } else { "<empty>".to_owned() } }
-            return Err(HypervError { msg: format!("Powershell returned failure exit code: {}.\nStdout: {} \nStderr: {}", exit_code_str, handle_blank(stdout), handle_blank(stderr)) });
+            Err(HypervError { msg: format!("Powershell returned failure exit code: {}.\nStdout: {} \nStderr: {}", exit_code_str, handle_blank(stdout), handle_blank(stderr)) })
+        } else {
+            let output = process.stdout()
+                .ok_or_else(|| HypervError::new("Failed obtain stdout of PowerShell process".to_owned()))?;
+            Ok(output)
         }
-
-        Ok(output)
     }
 }
 
