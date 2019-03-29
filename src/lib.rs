@@ -21,18 +21,23 @@ impl Hyperv {
         Ok(vms)
     }
 
-    pub fn import_vm<P: AsRef<Path>>(path: P) -> Result<()> {
+    pub fn import_vm<P: AsRef<Path>>(path: P, import_type: &ImportType) -> Result<()> {
         let path = Self::validate_file_path(path.as_ref())?;
-        Self::spawn_and_wait(&format!("import-vm -Path \"{}\"", path))?;
+        let command = &format!(
+            "import-vm -Path \"{}\" {};",
+        path,
+        Self::generate_import_vm_param_stub(import_type));
+        Self::spawn_and_wait(command)?;
         Ok(())
     }
 
-    pub fn compare_vm<P: AsRef<Path>>(path: P) -> Result<Vec<VmIncompatibility>> {
+    pub fn compare_vm<P: AsRef<Path>>(path: P, import_type: &ImportType) -> Result<Vec<VmIncompatibility>> {
         let path = Self::validate_file_path(path.as_ref())?;
         let command = format!(
-            "$report = compare-vm -Path \"{}\";
+            "$report = compare-vm -Path \"{}\" {};
             if ($?) {{ $report.Incompatibilities | Format-Table -Property MessageId, Message -HideTableHeaders }}",
-        path);
+        path,
+        Self::generate_import_vm_param_stub(import_type));
              
         let output = Self::spawn_and_wait(&command)?;
 
@@ -47,6 +52,28 @@ impl Hyperv {
             let msg_id = msg_id.parse::<i64>().map_err(|e| HypervError { msg: format!("Failed to parse to VmIncomatibility. Cannot parse MessageId to i64: {}", e) })?;
             Ok(Some(VmIncompatibility::from(msg_id, msg.to_owned())))
         })
+    }
+
+    fn generate_import_vm_param_stub(import_type: &ImportType) -> String {
+        match import_type {
+            ImportType::RegisterInPlace => "".to_owned(),
+            ImportType::Restore { vhd_path, virtual_machine_path } => {
+                match (vhd_path, virtual_machine_path) {
+                    (None, None)  => "-Copy".to_owned(),
+                    (Some(vhdpath), None)  => format!("-Copy -VhdDestinationPath \"{}\"", vhdpath.to_string_lossy()),
+                    (None, Some(vmpath))  => format!("-Copy -VirtualMachinePath \"{}\"", vmpath.to_string_lossy()),
+                    (Some(vhdpath), Some(vmpath))  => format!("-Copy -VhdDestinationPath \"{}\" -VirtualMachinePath \"{}\"", vhdpath.to_string_lossy(), vmpath.to_string_lossy()),
+                }
+            },
+            ImportType::Copy { vhd_path, virtual_machine_path } => {
+                match (vhd_path, virtual_machine_path) {
+                    (None, None)  => "-GenerateNewId -Copy".to_owned(),
+                    (Some(vhdpath), None)  => format!("-GenerateNewId -Copy -VhdDestinationPath \"{}\"", vhdpath.to_string_lossy()),
+                    (None, Some(vmpath))  => format!("-GenerateNewId -Copy -VirtualMachinePath \"{}\"", vmpath.to_string_lossy()),
+                    (Some(vhdpath), Some(vmpath))  => format!("-GenerateNewId -Copy -VhdDestinationPath \"{}\" -VirtualMachinePath \"{}\"", vhdpath.to_string_lossy(), vmpath.to_string_lossy()),
+                }
+            }
+        }
     }
 
     fn validate_file_path(path: &Path) -> Result<&str> {
@@ -100,6 +127,12 @@ impl Hyperv {
             Ok(output)
         }
     }
+}
+
+pub enum ImportType<'a, 'b> {
+    RegisterInPlace,
+    Restore { vhd_path: Option<&'a Path>, virtual_machine_path: Option<&'b Path> },
+    Copy { vhd_path: Option<&'a Path>, virtual_machine_path: Option<&'b Path> },
 }
 
 #[derive(Debug, Deserialize)]
